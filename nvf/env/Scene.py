@@ -15,6 +15,7 @@ class BN3DScene(Blender):
         from mathutils import Matrix
 
         objects, vertices = import_obj(cfg.mesh_path)
+        self.bn3d_objects = objects
         self.world_to_canonical, self.canonical_to_world = normalization(vertices)
         for obj in objects:
             obj.matrix_world = Matrix(self.world_to_canonical.tolist()) @ obj.matrix_world
@@ -35,7 +36,16 @@ class BN3DScene(Blender):
         self.scene.world = world
 
     def get_mesh(self):
-        return super().get_mesh()
+        # The normalized OBJ already fits inside [-1, 1]. The generic Blender
+        # path clips with a boolean operation, which requires an external backend.
+        vertices, faces = [], []
+        count = 0
+        for obj in self.bn3d_objects:
+            if obj.parent not in self.bn3d_objects:
+                count = extract_mesh_data(obj, vertices, faces, count)
+        if not faces:
+            raise ValueError('BN3D OBJ produced no mesh faces')
+        return trimesh.Trimesh(vertices=np.asarray(vertices), faces=np.asarray(faces), process=False)
 
 class HubbleScene(BlenderGLB):
     """docstring for HubbleScene"""

@@ -1,8 +1,8 @@
 {
-  "mesh_path": "/Users/roxanna/26fall/AVS_SP/data/buildnet3d/building_models/building1/House.obj",
-  "data_root": "/Users/roxanna/26fall/AVS_SP/data/REAL/building1",
-  "output_root": "/Users/roxanna/26fall/AVS_SP/outputs/bn3d_nvf/building1",
-  "seeds": [42, 43, 44],
+  "mesh_path": "/mnt/scratch/imos-students/ke/data/buildnet3d/building_models/building1/House.obj",
+  "data_root": "/mnt/scratch/imos-students/ke/data/REAL/building1",
+  "output_root": "/mnt/scratch/imos-students/ke/outputs/bn3d_nvf/building1",
+  "seeds": [42],
   "candidates": 512,
   "train_iter": 5000,
   "nvf_iterations": 500,

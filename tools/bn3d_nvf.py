@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from nvf.bn3d_data import read_metadata, sha256, split_frames, transform_pose, project_opengl
 
 
@@ -41,8 +46,66 @@ def prepare(config):
         "splits": {str(seed): dict(zip(("initial", "test"), split_frames(meta, seed)))
                    for seed in config["seeds"]},
     }
-    (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    # NVF and Random jobs can prepare the same inputs concurrently.
+    temporary = output / f".manifest.{os.getpid()}.{uuid4().hex}.json"
+    temporary.write_text(json.dumps(manifest, indent=2) + "\n")
+    temporary.replace(output / "manifest.json")
     return manifest
+
+
+def environment_config(config, meta, k, *, gpu=True, samples=None):
+    return SimpleNamespace(
+        resolution=(meta["height"], meta["width"]), fov=90,
+        fx=float(k[0, 0]), fy=float(k[1, 1]),
+        cx=float(k[0, 2]), cy=float(k[1, 2]),
+        mesh_path=config["mesh_path"], cycles=True,
+        cycles_samples=samples if samples is not None else config.get("cycles_samples", 100),
+        resolution_percentage=100, gpu=gpu, scene="BN3DScene",
+    )
+
+
+def preflight(config, policy):
+    """Import the actual OBJ and render one known metadata camera without training."""
+    from PIL import Image
+    from nvf.env.Scene import BN3DScene
+
+    if policy not in ("nvf", "random"):
+        raise ValueError(policy)
+    manifest = prepare(config)
+    meta = read_metadata(Path(config["data_root"]))
+    k = np.asarray(manifest["intrinsics"])
+    scene = BN3DScene(environment_config(config, meta, k, gpu=False, samples=1))
+    pose = transform_pose(np.asarray(meta["frames"][0]["camtoworld"], dtype=float),
+                          scene.world_to_canonical)
+    uv, depth = project_opengl(np.asarray(scene.mesh.vertices), pose, k)
+    visible = (depth > 0) & np.isfinite(uv).all(axis=1)
+    visible &= (uv[:, 0] >= 0) & (uv[:, 0] < meta["width"])
+    visible &= (uv[:, 1] >= 0) & (uv[:, 1] < meta["height"])
+    if int(visible.sum()) < 100:
+        raise ValueError("BN3D OBJ/camera projection has fewer than 100 visible vertices")
+    rendered = scene.render_pose(pose)
+    mask = rendered[..., 3] > 0
+    if not mask.any():
+        raise ValueError("BN3D Blender render has an empty foreground mask")
+    archived_mask_path = (Path(config["data_root"]) / "semantic" /
+                          meta["frames"][0]["segmentation_path"])
+    archived_mask = np.asarray(Image.open(archived_mask_path)) > 0
+    intersection = np.logical_and(mask, archived_mask).sum()
+    union = np.logical_or(mask, archived_mask).sum()
+    silhouette_iou = float(intersection / union)
+    if silhouette_iou < 0.9:
+        raise ValueError(f"BN3D camera/OBJ silhouette IoU is {silhouette_iou:.3f} < 0.9")
+    original = np.asarray(Image.open(Path(config["data_root"]) / "images" /
+                                     meta["frames"][0]["rgb_path"]).convert("RGB"))
+    preview = np.concatenate((original, rendered[..., :3]), axis=1)
+    output = Path(config["output_root"]) / "prepared"
+    Image.fromarray(preview).save(output / f"preflight_{policy}.png")
+    result = {"visible_vertices": int(visible.sum()),
+              "rendered_foreground_fraction": float(mask.mean()),
+              "silhouette_iou": silhouette_iou,
+              "preview": str(output / f"preflight_{policy}.png")}
+    (output / f"preflight_{policy}.json").write_text(json.dumps(result, indent=2) + "\n")
+    return result
 
 
 def run(config, policy, seed):
@@ -69,14 +132,7 @@ def run(config, policy, seed):
     (run_dir / "effective_config.json").write_text(json.dumps(config, indent=2) + "\n")
     set_seed(seed)
     k = np.asarray(manifest["intrinsics"])
-    env_cfg = SimpleNamespace(
-        resolution=(meta["height"], meta["width"]), fov=90,
-        fx=float(k[0, 0]), fy=float(k[1, 1]),
-        cx=float(k[0, 2]), cy=float(k[1, 2]),
-        mesh_path=config["mesh_path"], cycles=True,
-        cycles_samples=config.get("cycles_samples", 100),
-        resolution_percentage=100, gpu=True, scene="BN3DScene",
-    )
+    env_cfg = environment_config(config, meta, k)
     scene = BN3DScene(env_cfg)
     matrix = scene.world_to_canonical
     raw_poses = [np.asarray(f["camtoworld"], dtype=float) for f in meta["frames"]]
@@ -138,7 +194,22 @@ def run(config, policy, seed):
 
     tracker = RefMetricTracker(cfg, EvaluationEnvironment())
     tracker.init_trajectory(obs_poses)
+    elapsed_steps = []
+
+    def record_timing(n, started):
+        elapsed_steps.append(time.perf_counter() - started)
+        remaining = float(np.mean(elapsed_steps) * (20 - n))
+        (run_dir / "timing.json").write_text(json.dumps({
+            "completed_observation_counts": list(range(3, n + 1)),
+            "elapsed_seconds": elapsed_steps,
+            "estimated_remaining_seconds": remaining,
+        }, indent=2) + "\n")
+        print(f"{policy} seed {seed}: {n}/20 observations trained; "
+              f"step {elapsed_steps[-1]/3600:.2f} h; "
+              f"estimated remaining {remaining/3600:.1f} h", flush=True)
+
     for n in range(3, 21):
+        step_start = time.perf_counter()
         agent.pipeline.reset()
         agent.pipeline.config.max_num_iterations = cfg.train_iter
         set_params(SimpleNamespace(method="NVF", **vars(cfg)), agent.pipeline)
@@ -162,6 +233,7 @@ def run(config, policy, seed):
         (run_dir / f"metrics_{n:02d}.json").write_text(json.dumps(
             {name: float(value) for name, value in metrics.items()}, indent=2) + "\n")
         if n == 20:
+            record_timing(n, step_start)
             break
         candidates = agent.sampler(cfg.n_sample, pose=agent.current_pose)
         if len(candidates) == 0:
@@ -188,6 +260,7 @@ def run(config, policy, seed):
             "chosen": chosen,
         }) + "\n")
         (run_dir / "trajectory.json").write_text(json.dumps(trajectory, indent=2) + "\n")
+        record_timing(n, step_start)
     (run_dir / "complete.json").write_text(json.dumps({"policy": policy, "seed": seed,
                                                         "observations": len(observations)}) + "\n")
 
@@ -218,7 +291,7 @@ def summarize(config):
                                     if r["policy"] == policy and r["observations"] == 20])
                   for policy in ("nvf", "random")}
         result[key] = {
-            policy: {"mean": float(a.mean()), "std": float(a.std(ddof=1))}
+            policy: {"mean": float(a.mean()), "std": float(a.std(ddof=1)) if len(a) > 1 else 0.0}
             for policy, a in values.items()
         }
         result[key]["paired_difference"] = (values["nvf"] - values["random"]).tolist()
@@ -228,7 +301,7 @@ def summarize(config):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("prepare", "run", "summarize"))
+    parser.add_argument("command", choices=("prepare", "preflight", "run", "summarize"))
     parser.add_argument("--config", required=True)
     parser.add_argument("--policy", choices=("nvf", "random"))
     parser.add_argument("--seed", type=int)
@@ -236,6 +309,10 @@ def main():
     config = load_config(args.config)
     if args.command == "prepare":
         print(json.dumps(prepare(config), indent=2))
+    elif args.command == "preflight":
+        if args.policy is None:
+            parser.error("preflight requires --policy")
+        print(json.dumps(preflight(config, args.policy), indent=2))
     elif args.command == "summarize":
         print(summarize(config))
     else:
