@@ -183,12 +183,10 @@ class RefMetricTracker(object):
         fov = self.config.env.fov /180 *np.pi
         width = self.img_size[1] * torch.ones(n_cameras,1, dtype=torch.float32)
         height = self.img_size[0] * torch.ones(n_cameras,1, dtype=torch.float32)
-        fx = 0.5*width/np.tan(fov/2)
-        # fx = torch.ones(n_cameras,1, dtype=torch.float32)*1024
-        fy = fx
-        
-        cx = width//2
-        cy = height//2
+        fx = torch.ones_like(width) * self.env.scene.fx
+        fy = torch.ones_like(height) * self.env.scene.fy
+        cx = torch.ones_like(width) * self.env.scene.cx
+        cy = torch.ones_like(height) * self.env.scene.cy
         # breakpoint()
         all_images = []
         for i in range(n_cameras):
@@ -223,12 +221,10 @@ class RefMetricTracker(object):
         fov = self.config.env.fov /180 *np.pi
         width = self.img_size[1] * torch.ones(n_cameras,1, dtype=torch.float32)
         height = self.img_size[0] * torch.ones(n_cameras,1, dtype=torch.float32)
-        fx = 0.5*width/np.tan(fov/2)
-        # fx = torch.ones(n_cameras,1, dtype=torch.float32)*1024
-        fy = fx
-        
-        cx = width//2
-        cy = height//2
+        fx = torch.ones_like(width) * self.env.scene.fx
+        fy = torch.ones_like(height) * self.env.scene.fy
+        cx = torch.ones_like(width) * self.env.scene.cx
+        cy = torch.ones_like(height) * self.env.scene.cy
         # all_images = []
         bs = self.ref_poses.shape[0]
         costs = torch.zeros(bs, self.img_size[0], self.img_size[1])

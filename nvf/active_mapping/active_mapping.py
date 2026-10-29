@@ -25,6 +25,7 @@ from nerfstudio.cameras.camera_paths import (get_interpolated_camera_path,
                                              get_path_from_json,
                                              get_camera,
                                              get_spiral_path)
+from nerfstudio.cameras.cameras import Cameras, CameraType
 from nerfstudio.configs.base_config import ViewerConfig
 from nerfstudio.data.datamanagers.base_datamanager import \
     VanillaDataManagerConfig
@@ -70,6 +71,21 @@ class ActiveMapper:
     plan_img_size = (256,256)
     train_img_size = (512,512)
     fov = 90
+    camera_intrinsics = None  # (fx, fy, cx, cy) at train_img_size
+
+    def camera_from_transform(self, transform, height, width, device):
+        if self.camera_intrinsics is None:
+            return get_path_from_json(get_camera_dict(transform, self.fov, height, width)).to(device)
+        fx, fy, cx, cy = self.camera_intrinsics
+        train_h, train_w = self.train_img_size
+        camera = Cameras(
+            fx=fx * width / train_w, fy=fy * height / train_h,
+            cx=cx * width / train_w, cy=cy * height / train_h,
+            width=width, height=height,
+            camera_to_worlds=torch.as_tensor(transform[:3, :4], dtype=torch.float32)[None],
+            camera_type=CameraType.PERSPECTIVE,
+        )
+        return camera.to(device)
     # scene_scale = 0.3333
 
     def __init__(self, config_pth: str = "", dataset_pth: str = "") -> None:
@@ -338,9 +354,7 @@ class ActiveMapper:
                 camera = camera.to(pipeline.device)  
             else:
                 transform = to_transform( poses[batch])
-                camera_dict = get_camera_dict(transform, self.fov, height, width)
-                camera = get_path_from_json(camera_dict)
-                camera = camera.to(pipeline.device)
+                camera = self.camera_from_transform(transform, height, width, pipeline.device)
 
             # camera ray bundle 300x300
             camera_ray_bundle = camera.generate_rays(camera_indices=0, aabb_box=None) 
@@ -444,9 +458,7 @@ class ActiveMapper:
 
         for i in range(batch):
             transform = to_transform(poses[i])
-            camera_dict = get_camera_dict(transform=transform, fov=self.fov, height=height, width=width)
-            camera = get_path_from_json(camera_dict)
-            camera = camera.to(pipeline.device)
+            camera = self.camera_from_transform(transform, height, width, pipeline.device)
 
             camera_ray_bundle = camera.generate_rays(camera_indices=0, aabb_box=None)
             outputs = pipeline.model.get_outputs_for_camera_ray_bundle(camera_ray_bundle)
@@ -532,6 +544,8 @@ class ActiveMapper:
         dataparser = NBVDataParserConfig(fov = self.fov, 
                                         width = self.train_img_size[0], 
                                         height = self.train_img_size[1])
+        if self.camera_intrinsics is not None:
+            dataparser.fx, dataparser.fy, dataparser.cx, dataparser.cy = self.camera_intrinsics
         self.config['pipeline']['datamanager'] = NBVDataManagerConfig(
                                                     dataparser=dataparser,
                                                     train_num_rays_per_batch=4096, #4096

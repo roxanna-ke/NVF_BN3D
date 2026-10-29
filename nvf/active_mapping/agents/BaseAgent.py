@@ -34,7 +34,11 @@ class BaseAgent():
         self.pipeline = ActiveMapper()
         self.pipeline.fov = config.env.fov
         self.pipeline.train_img_size = config.env.resolution
-        config_path = self.pipeline.initialize_config(config_home = "cfg/", dataset_path = "outputs/pipeline/dataset", model=config.model)
+        if getattr(config.env, 'fx', None) is not None:
+            self.pipeline.camera_intrinsics = (config.env.fx, config.env.fy, config.env.cx, config.env.cy)
+        config_home = getattr(config, 'config_home', 'cfg/')
+        dataset_path = getattr(config, 'dataset_path', 'outputs/pipeline/dataset')
+        config_path = self.pipeline.initialize_config(config_home=config_home, dataset_path=dataset_path, model=config.model)
 
         # self.pipeline.clear_dataset()
         # self.pipeline.toggle_config_model_checkpoint(True)
@@ -255,5 +259,3 @@ class OptAgent(BaseAgent):
 
 if __name__ == "__main__":
     BaseAgent()
-
-    

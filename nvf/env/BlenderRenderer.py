@@ -143,8 +143,12 @@ class BaseScene(object):
         self.hfov = self.cfg.fov/180 *np.pi
         self.vfov = self.cfg.fov/180 *np.pi
 
-        self.fx = 0.5*self.width/np.tan(self.hfov/2 )
-        self.fy = 0.5*self.height/np.tan(self.vfov/2 )
+        self.fx = getattr(self.cfg, 'fx', None) or 0.5*self.width/np.tan(self.hfov/2 )
+        self.fy = getattr(self.cfg, 'fy', None) or 0.5*self.height/np.tan(self.vfov/2 )
+        self.cx = getattr(self.cfg, 'cx', None)
+        self.cy = getattr(self.cfg, 'cy', None)
+        self.cx = self.width/2 if self.cx is None else self.cx
+        self.cy = self.height/2 if self.cy is None else self.cy
 
 
     def set_camera_pose(self, wTc):
@@ -156,7 +160,7 @@ class BaseScene(object):
     
     @property
     def intrinsic_matrix(self):
-        return np.array([[self.fx, 0, self.width/2], [0, self.fy, self.height/2], [0, 0, 1]])
+        return np.array([[self.fx, 0, self.cx], [0, self.fy, self.cy], [0, 0, 1]])
 
     @property
     def mesh(self):
@@ -194,10 +198,10 @@ class BaseScene(object):
             "k2": 0.,
             "p1": 0.,
             "p2": 0.,
-            "cx": self.width/2.,
-            "cy": self.width/2.,
+            "cx": self.cx,
+            "cy": self.cy,
             "w": self.width,
-            "h": self.width}
+            "h": self.height}
         return params
     
     def load_data(self, file, idx_start=None, idx_end=None, img_path=None, return_quat=True):
@@ -301,6 +305,10 @@ class Blender(BaseScene):
         # fx = 0.5*self.width/np.tan(self.cfg.hfov/2)
         # fy = 0.5*self.width/np.tan(self.cfg.hfov/2)
         camera.data.lens = self.fx / self.width * camera.data.sensor_width
+        camera.data.shift_x = (self.width / 2 - self.cx) / self.width
+        camera.data.shift_y = (self.cy - self.height / 2) / self.width
+        self.scene.render.pixel_aspect_x = 1.0
+        self.scene.render.pixel_aspect_y = self.fx / self.fy * self.height / self.width
 
         # pixel_aspect = self.fy / self.fx
         # scene = bpy.data.scenes["Scene"]

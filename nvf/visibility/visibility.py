@@ -189,12 +189,11 @@ def fov_visibility(cameras, points, z_min=0, z_max=10):
     
     # Check Z value
     # breakpoint()
-    uv_h = torch.einsum('bik,bnk->bni', K, points_camera_frame)  # num_cameras x num_points x 3
-
-    uv = uv_h/uv_h[:, :, [2]]
-
-    u = uv[:, :, 0]
-    v = uv[:, :, 1]
+    # Nerfstudio poses use OpenGL camera axes: +X right, +Y up, -Z forward.
+    # K is an image-space matrix with +v downwards.
+    forward_depth = -points_camera_frame[:, :, 2].clamp(max=-1e-8)
+    u = K[:, None, 0, 0] * points_camera_frame[:, :, 0] / forward_depth + K[:, None, 0, 2]
+    v = -K[:, None, 1, 1] * points_camera_frame[:, :, 1] / forward_depth + K[:, None, 1, 2]
     
     # Project points to image plane
     # u = fx[:, None] * points_cam[:, :, 0] / points_cam[:, :, 2]

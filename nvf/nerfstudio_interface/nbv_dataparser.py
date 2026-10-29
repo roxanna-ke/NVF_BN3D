@@ -56,6 +56,10 @@ class NBVDataParserConfig(DataParserConfig):
     fov: float = 90 # in degrees
     width: int = 512
     height: int = 512
+    fx: float | None = None
+    fy: float | None = None
+    cx: float | None = None
+    cy: float | None = None
     
     """Below methods to allow yaml assignment"""
     def __setitem__(self, key, value):
@@ -171,10 +175,10 @@ class NBVDataParser(DataParser):
         height = self.config.height
         f = 0.5 * weight/np.tan(fov/2)
         params = {}
-        params["fl_x"] = f
-        params["fl_y"] = f
-        params["cx"] = weight/2.
-        params["cy"] = height/2.
+        params["fl_x"] = self.config.fx if self.config.fx is not None else f
+        params["fl_y"] = self.config.fy if self.config.fy is not None else f
+        params["cx"] = self.config.cx if self.config.cx is not None else weight/2.
+        params["cy"] = self.config.cy if self.config.cy is not None else height/2.
         params["w"] = weight
         params["h"] = height
         return params

@@ -58,8 +58,8 @@ class VisibilityMeshMetric(object):
 
         self.fx = scene.fx
         self.fy = scene.fy
-        self.cx = scene.height / 2.0
-        self.cy = scene.width / 2.0
+        self.cx = scene.cx
+        self.cy = scene.cy
 
         self.H = scene.height
         self.W = scene.width

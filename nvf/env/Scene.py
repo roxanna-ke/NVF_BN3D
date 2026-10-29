@@ -2,6 +2,40 @@ from nvf.env.BlenderRenderer import *
 from nvf.env.BlenderProcess import BlenderProcess
 import nvf.env.gen_data_fn as gen_data_fn
 import contextlib
+from nvf.bn3d_data import import_obj, normalization
+
+
+class BN3DScene(Blender):
+    """BN3D building1 rendered through the existing NVF Blender interface."""
+
+    name = 'bn3d'
+
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        from mathutils import Matrix
+
+        objects, vertices = import_obj(cfg.mesh_path)
+        self.world_to_canonical, self.canonical_to_world = normalization(vertices)
+        for obj in objects:
+            obj.matrix_world = Matrix(self.world_to_canonical.tolist()) @ obj.matrix_world
+            obj['inst_id'] = 1000
+        bpy.context.view_layer.update()
+        self.add_camera()
+        self.config_camera()
+        self.config_blender()
+        self.scene.render.film_transparent = True
+        self.scene.view_settings.view_transform = 'Standard'
+        self.scene.view_settings.look = 'None'
+        self.scene.view_settings.exposure = 0
+        self.scene.view_settings.gamma = 1
+        world = bpy.data.worlds.new('BN3D neutral world')
+        world.use_nodes = True
+        world.node_tree.nodes.get('Background').inputs['Color'].default_value = (0.5, 0.5, 0.5, 1)
+        world.node_tree.nodes.get('Background').inputs['Strength'].default_value = 1
+        self.scene.world = world
+
+    def get_mesh(self):
+        return super().get_mesh()
 
 class HubbleScene(BlenderGLB):
     """docstring for HubbleScene"""

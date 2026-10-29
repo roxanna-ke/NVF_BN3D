@@ -57,7 +57,7 @@ def set_params(cfg, pipeline, planning=True):
         pipeline.trainer.pipeline.model.renderer_entropy.use_huber=cfg.use_huber
         pipeline.trainer.pipeline.model.renderer_entropy.use_var=cfg.use_var
         pipeline.trainer.pipeline.model.renderer_entropy.use_visibility = cfg.use_vis
-        pipeline.trainer.pipeline.model.renderer_entropy.mu = cfg.mu
+        pipeline.trainer.pipeline.model.renderer_entropy.beta = cfg.mu
         pipeline.use_visibility = True
         pipeline.trainer.pipeline.model.use_nvf = True
 
