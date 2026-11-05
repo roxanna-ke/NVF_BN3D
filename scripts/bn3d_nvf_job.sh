@@ -58,7 +58,7 @@ image="${MY_IMAGE:-registry.rcp.epfl.ch/imos-ke/avs:v0.0.1}"
 job_name="${CLUSTER_USER:-ke}-bn3d-${policy}-42-$(date +%H%M%S)"
 runai submit --name "$job_name" \
   -p "$project" --image "$image" --gpu "${MY_GPU_AMOUNT:-1.0}" --large-shm \
-  --node-pools "${NODE:-default}" --working-dir "$CONTAINER_REPO" \
+  --node-pools "${NODE:-default}" --working-dir "/mnt/scratch/imos-students/ke" \
   --environment CLUSTER_USER="${CLUSTER_USER:-ke}" \
   --environment CLUSTER_USER_ID="${CLUSTER_USER_ID:-308061}" \
   --environment CLUSTER_GROUP_NAME="${CLUSTER_GROUP_NAME:-imos}" \

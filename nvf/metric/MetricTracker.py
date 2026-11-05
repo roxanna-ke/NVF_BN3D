@@ -181,12 +181,11 @@ class RefMetricTracker(object):
         n_cameras = self.ref_poses.shape[0]
 
         fov = self.config.env.fov /180 *np.pi
-        width = self.img_size[1] * torch.ones(n_cameras,1, dtype=torch.float32)
-        height = self.img_size[0] * torch.ones(n_cameras,1, dtype=torch.float32)
-        fx = torch.ones_like(width) * self.env.scene.fx
-        fy = torch.ones_like(height) * self.env.scene.fy
-        cx = torch.ones_like(width) * self.env.scene.cx
-        cy = torch.ones_like(height) * self.env.scene.cy
+        height, width = self.img_size
+        fx = torch.ones(n_cameras, 1, dtype=torch.float32) * self.env.scene.fx
+        fy = torch.ones_like(fx) * self.env.scene.fy
+        cx = torch.ones_like(fx) * self.env.scene.cx
+        cy = torch.ones_like(fx) * self.env.scene.cy
         # breakpoint()
         all_images = []
         for i in range(n_cameras):
@@ -195,6 +194,8 @@ class RefMetricTracker(object):
             fy=fy,
             cx=cx,
             cy=cy,
+            width=width,
+            height=height,
             camera_type=CameraType.PERSPECTIVE,
             camera_to_worlds=self.ref_poses[i,:-1,:]
             ).to(pipeline.trainer.device)
@@ -219,12 +220,11 @@ class RefMetricTracker(object):
         n_cameras = self.ref_poses.shape[0]
 
         fov = self.config.env.fov /180 *np.pi
-        width = self.img_size[1] * torch.ones(n_cameras,1, dtype=torch.float32)
-        height = self.img_size[0] * torch.ones(n_cameras,1, dtype=torch.float32)
-        fx = torch.ones_like(width) * self.env.scene.fx
-        fy = torch.ones_like(height) * self.env.scene.fy
-        cx = torch.ones_like(width) * self.env.scene.cx
-        cy = torch.ones_like(height) * self.env.scene.cy
+        height, width = self.img_size
+        fx = torch.ones(n_cameras, 1, dtype=torch.float32) * self.env.scene.fx
+        fy = torch.ones_like(fx) * self.env.scene.fy
+        cx = torch.ones_like(fx) * self.env.scene.cx
+        cy = torch.ones_like(fx) * self.env.scene.cy
         # all_images = []
         bs = self.ref_poses.shape[0]
         costs = torch.zeros(bs, self.img_size[0], self.img_size[1])
@@ -234,6 +234,8 @@ class RefMetricTracker(object):
             fy=fy,
             cx=cx,
             cy=cy,
+            width=width,
+            height=height,
             camera_type=CameraType.PERSPECTIVE,
             camera_to_worlds=self.ref_poses[i,:-1,:]
             ).to(pipeline.trainer.device)
