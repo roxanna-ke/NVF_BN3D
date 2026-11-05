@@ -1,7 +1,15 @@
 {
   "mesh_path": "/mnt/scratch/imos-students/ke/data/buildnet3d/building_models/building1/House.obj",
   "data_root": "/mnt/scratch/imos-students/ke/data/REAL/building1",
-  "output_root": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building1",
+  "output_root": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch_k711/building1",
+  "camera": {
+    "width": 512,
+    "height": 512,
+    "fx": 711.1112738715278,
+    "fy": 711.1112738715278,
+    "cx": 255.5,
+    "cy": 255.5
+  },
   "seeds": [
     42
   ],

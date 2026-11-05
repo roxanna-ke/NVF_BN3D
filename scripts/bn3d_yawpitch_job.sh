@@ -71,5 +71,5 @@ cat <<EOF
 Submitted: $job_name
 Logs:      runai logs -f $job_name -p $project
 Status:    runai describe job $job_name -p $project
-Output:    /mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building1/$policy/$total/seed42
+Output:    configured output_root in $CONFIG, under $policy/$total/seed42
 EOF

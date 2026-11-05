@@ -19,7 +19,7 @@ from nvf.bn3d_data import sha256, split_frames, transform_pose, project_opengl
 
 EXPERIMENTS = (("nvf", 20), ("nvf", 30), ("nvf", 50), ("random", 20), ("random", 50))
 
-def read_metadata(data_root):
+def read_metadata(data_root, camera):
     """Read poses only; dataset images and camera intrinsics are not inputs."""
     meta = json.loads((Path(data_root) / "meta_data.json").read_text())
     for frame in meta["frames"]:
@@ -28,7 +28,7 @@ def read_metadata(data_root):
             raise ValueError("Invalid camera pose")
         if not np.allclose(pose[3], [0, 0, 0, 1]) or not np.allclose(pose[:3,:3].T @ pose[:3,:3], np.eye(3), atol=1e-4) or not np.isclose(np.linalg.det(pose[:3,:3]), 1, atol=1e-4):
             raise ValueError("Invalid camera rotation")
-    meta["height"] = meta["width"] = 512
+    meta["height"], meta["width"] = camera["height"], camera["width"]
     return meta
 
 def validate_experiment(policy, total):
@@ -41,6 +41,16 @@ def load_config(path):
     config = json.loads(Path(path).read_text())
     for key in ("mesh_path", "data_root", "output_root"):
         config[key] = str(Path(config[key]).expanduser().resolve())
+    camera = config["camera"]
+    for key in ("width", "height"):
+        if type(camera[key]) is not int or camera[key] != 512:
+            raise ValueError("This experiment requires camera width and height of 512")
+    for key in ("fx", "fy", "cx", "cy"):
+        value = camera[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value):
+            raise ValueError(f"camera.{key} must be a finite number")
+    if camera["fx"] <= 0 or camera["fy"] <= 0:
+        raise ValueError("Camera focal lengths must be positive")
     if not 0 < config["min_foreground_fraction"] <= 1:
         raise ValueError("Invalid foreground fraction")
     for key in ("random_max_attempts", "random_max_batches", "candidates"):
@@ -51,11 +61,13 @@ def load_config(path):
 
 def prepare(config):
     """CPU-only metadata checks; Blender scene checks happen in run()."""
-    meta = read_metadata(Path(config["data_root"]))
+    meta = read_metadata(Path(config["data_root"]), config["camera"])
     mesh = Path(config["mesh_path"])
     if not mesh.is_file():
         raise FileNotFoundError(mesh)
-    k = np.array([[256., 0., 256.], [0., 256., 256.], [0., 0., 1.]])
+    camera = config["camera"]
+    k = np.array([[camera["fx"], 0., camera["cx"]],
+                  [0., camera["fy"], camera["cy"]], [0., 0., 1.]], dtype=float)
     output = Path(config["output_root"]) / "prepared"
     output.mkdir(parents=True, exist_ok=True)
     manifest = {
@@ -64,6 +76,9 @@ def prepare(config):
                          if path.is_file() and path.suffix.lower() in (".obj", ".mtl", ".png", ".jpg", ".jpeg")},
         "metadata_sha256": sha256(Path(config["data_root"]) / "meta_data.json"),
         "intrinsics": k.tolist(),
+        "camera": camera,
+        "horizontal_fov_degrees": float(np.degrees(2 * np.arctan(camera["width"] / (2 * camera["fx"])))),
+        "vertical_fov_degrees": float(np.degrees(2 * np.arctan(camera["height"] / (2 * camera["fy"])))),
         "width": meta["width"], "height": meta["height"],
         "splits": {str(seed): dict(zip(("initial", "test"), split_frames(meta, seed)))
                    for seed in config["seeds"]},
@@ -77,7 +92,8 @@ def prepare(config):
 
 def environment_config(config, meta, k, *, gpu=True, samples=None):
     return SimpleNamespace(
-        resolution=(meta["height"], meta["width"]), fov=90,
+        resolution=(meta["height"], meta["width"]),
+        fov=float(np.degrees(2 * np.arctan(meta["width"] / (2 * k[0, 0])))),
         fx=float(k[0, 0]), fy=float(k[1, 1]),
         cx=float(k[0, 2]), cy=float(k[1, 2]),
         mesh_path=config["mesh_path"], cycles=True,
@@ -94,7 +110,7 @@ def preflight(config, policy):
     if policy not in ("nvf", "random"):
         raise ValueError(policy)
     manifest = prepare(config)
-    meta = read_metadata(Path(config["data_root"]))
+    meta = read_metadata(Path(config["data_root"]), config["camera"])
     k = np.asarray(manifest["intrinsics"])
     scene = BN3DScene(environment_config(config, meta, k, gpu=False, samples=1))
     pose = transform_pose(np.asarray(meta["frames"][0]["camtoworld"], dtype=float),
@@ -114,6 +130,9 @@ def preflight(config, policy):
     result = {"visible_vertices": int(visible.sum()),
               "rendered_foreground_fraction": float(mask.mean()),
               "intrinsics": k.tolist(),
+              "camera": manifest["camera"],
+              "horizontal_fov_degrees": manifest["horizontal_fov_degrees"],
+              "vertical_fov_degrees": manifest["vertical_fov_degrees"],
               "original_silhouette_check": False,
               "preview": str(output / f"preflight_{policy}.png")}
     (output / f"preflight_{policy}.json").write_text(json.dumps(result, indent=2) + "\n")
@@ -135,7 +154,7 @@ def run(config, policy, seed, total):
     if seed not in config["seeds"]:
         raise ValueError("Seed is absent from experiment config")
     manifest = prepare(config)
-    meta = read_metadata(Path(config["data_root"]))
+    meta = read_metadata(Path(config["data_root"]), config["camera"])
     init_ids = manifest["splits"][str(seed)]["initial"]
     test_ids = manifest["splits"][str(seed)]["test"]
     run_dir = Path(config["output_root"]) / policy / str(total) / f"seed{seed}"
@@ -146,6 +165,8 @@ def run(config, policy, seed, total):
     revision = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
     config["git_revision"] = revision.stdout.strip() or "unknown"
     config["intrinsics"] = manifest["intrinsics"]
+    config["horizontal_fov_degrees"] = manifest["horizontal_fov_degrees"]
+    config["vertical_fov_degrees"] = manifest["vertical_fov_degrees"]
     (run_dir / "effective_config.json").write_text(json.dumps(config, indent=2) + "\n")
     set_seed(seed)
     k = np.asarray(manifest["intrinsics"])
