@@ -1,0 +1,26 @@
+{
+  "mesh_path": "/mnt/scratch/imos-students/ke/data/buildnet3d/building_models/building1/House.obj",
+  "data_root": "/mnt/scratch/imos-students/ke/data/REAL/building1",
+  "output_root": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building1",
+  "seeds": [
+    42
+  ],
+  "candidates": 512,
+  "train_iter": 5000,
+  "nvf_iterations": 500,
+  "nvf_batch_size": 65536,
+  "cycles_samples": 100,
+  "d0": 1.0,
+  "world_up": [
+    0,
+    0,
+    1
+  ],
+  "target_height_fraction": [
+    0,
+    1
+  ],
+  "min_foreground_fraction": 0.01,
+  "random_max_attempts": 128,
+  "random_max_batches": 4
+}
