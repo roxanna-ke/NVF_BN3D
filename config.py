@@ -10,6 +10,7 @@ class ModelType(StrEnum):
 class AgentType(StrEnum):
     base = 'BaseAgent' # Base Agent
     opt = 'OptAgent' # Opt Agent
+    random = 'RandomAgent'
 
 class SamplerType(StrEnum):
     base = 'BaseSampler' # Base sampler
