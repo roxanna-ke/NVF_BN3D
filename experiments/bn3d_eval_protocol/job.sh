@@ -13,6 +13,11 @@ esac
 [[ -f "$config" ]] || { echo "Missing config: $config" >&2; exit 1; }
 config="$(cd "$(dirname "$config")" && pwd)/$(basename "$config")"
 if [[ "$mode" == worker ]]; then
+  [[ -d "$cluster_repo" && -x "$cluster_repo" ]] || {
+    echo "Container cannot access repository: $cluster_repo; check PVC mount and directory permissions." >&2
+    id >&2
+    exit 1
+  }
   cd "$cluster_repo"
   [[ -x "$python_bin" ]] || { echo "Missing Python: $python_bin" >&2; exit 1; }
   export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
@@ -35,7 +40,7 @@ job_name="${CLUSTER_USER:-ke}-bn3d-eval-$(date +%m%d-%H%M%S)"
 runai submit --name "$job_name" \
   -p "$project" --image "${MY_IMAGE:-registry.rcp.epfl.ch/imos-ke/avs:v0.0.1}" \
   --gpu "${MY_GPU_AMOUNT:-1.0}" --large-shm --node-pools "${NODE:-default}" \
-  --working-dir "$cluster_repo" \
+  --working-dir /tmp \
   --environment CLUSTER_USER="${CLUSTER_USER:-ke}" \
   --environment CLUSTER_USER_ID="${CLUSTER_USER_ID:-308061}" \
   --environment CLUSTER_GROUP_NAME="${CLUSTER_GROUP_NAME:-imos}" \
@@ -46,5 +51,6 @@ runai submit --name "$job_name" \
   --command -- /bin/bash "$cluster_repo/experiments/bn3d_eval_protocol/job.sh" \
   worker "$cluster_config" "$comparison"
 echo "Submitted: $job_name"
-echo "Logs: runai logs -f $job_name -p $project"
+echo "View logs (copy the next line):"
+echo "runai logs -f $job_name -p $project"
 echo "Results: output_root in $config"

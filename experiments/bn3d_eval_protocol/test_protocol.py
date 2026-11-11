@@ -5,6 +5,7 @@ Run from the repository root: python3 -m unittest experiments.bn3d_eval_protocol
 import copy
 import itertools
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -38,6 +39,30 @@ assert not hasattr(sys.modules['sampling'], 'generate_views')
 '''
         subprocess.run([sys.executable, '-B', '-c', script],
                        cwd=Path(__file__).resolve().parents[2], check=True)
+
+    def test_submit_from_other_directory_uses_safe_container_start_directory(self):
+        # Mock the CLI, never contact Run:ai. The login-node cwd must not be
+        # confused with the working directory used before a container starts.
+        here = Path(__file__).resolve().parent
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            log = root / 'arguments.json'
+            stub = root / 'runai'
+            stub.write_text(f'#!{sys.executable}\nimport json, os, sys\n'
+                            'from pathlib import Path\n'
+                            'Path(os.environ["BN3D_MOCK_LOG"]).write_text(json.dumps(sys.argv[1:]))\n')
+            stub.chmod(0o755)
+            environment = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
+                               BN3D_MOCK_LOG=str(log), CONTAINER_REPO='/mnt/scratch/example/repo')
+            result = subprocess.run(['bash', str(here / 'job.sh'), 'submit',
+                                     str(here / 'config.json'), 'k711_20'],
+                                    cwd=root, env=environment, check=True, capture_output=True, text=True)
+            arguments = json.loads(log.read_text())
+            self.assertEqual(arguments[arguments.index('--working-dir') + 1], '/tmp')
+            self.assertEqual(arguments[-3:], ['worker',
+                '/mnt/scratch/example/repo/experiments/bn3d_eval_protocol/config.json', 'k711_20'])
+            self.assertIn('\nrunai logs -f ', result.stdout)
+            self.assertNotIn('Logs: runai', result.stdout)
 
     def test_ground_and_complete_framing_with_both_intrinsics(self):
         for focal in [256, 711.111274]:
