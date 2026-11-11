@@ -155,6 +155,10 @@ def verify_files(directory, manifest):
 
 def freeze(group, cfg):
     item = pair_inputs(group, cfg)[0]
+    freeze_item(item, cfg)
+
+
+def freeze_item(item, cfg):
     dest, spec = dataset_directory(item, cfg)
     if dest.exists():
         manifest = read(dest / 'manifest.json')

@@ -81,7 +81,11 @@ class BaseAgent():
         with torch.no_grad():
             cost = self.pipeline.get_cost(poses=poses[:,None,:], return_image=True)
             # plan_result["entropy"]= cost.detach().cpu().numpy()
+            entropy_maps = cost
             cost = cost.mean(dim=(-1, -2))
+            observer = getattr(self, 'reward_observer', None)
+            if observer is not None:
+                observer(poses, entropy_maps, cost)
             plan_result["entropy"]= cost.detach().cpu().numpy()
             # print(cost.shape)
         self.plan_hist.append(plan_result)

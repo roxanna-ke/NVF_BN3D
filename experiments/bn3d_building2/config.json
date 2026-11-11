@@ -1,0 +1,4 @@
+{
+  "train_config": "train.json",
+  "eval_config": "eval.json"
+}

@@ -1,0 +1,62 @@
+{
+  "output_root": "/mnt/scratch/imos-students/ke/outputs/bn3d_building2_eval_v1/building2",
+  "seed": 42,
+  "inference_seeds": [
+    42000,
+    43000,
+    44000
+  ],
+  "modes": [
+    "train",
+    "eval"
+  ],
+  "sampling": {
+    "ring_counts": [
+      4,
+      6,
+      9
+    ],
+    "ring_height_fractions": [
+      0.95,
+      0.45,
+      0.05
+    ],
+    "azimuth_offset_degrees": 15.0,
+    "margin_pixels": 12,
+    "min_foreground_fraction": 0.2,
+    "target_foreground_fraction": 0.35,
+    "ground_z": null
+  },
+  "comparisons": [
+    {
+      "id": "yawpitch_3",
+      "nvf_run": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/nvf/50/seed42",
+      "random_run": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/random/50/seed42",
+      "checkpoint_observations": 3
+    },
+    {
+      "id": "yawpitch_10",
+      "nvf_run": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/nvf/50/seed42",
+      "random_run": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/random/50/seed42",
+      "checkpoint_observations": 10
+    },
+    {
+      "id": "yawpitch_20",
+      "nvf_run": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/nvf/50/seed42",
+      "random_run": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/random/50/seed42",
+      "checkpoint_observations": 20
+    },
+    {
+      "id": "yawpitch_30",
+      "nvf_run": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/nvf/50/seed42",
+      "random_run": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/random/50/seed42",
+      "checkpoint_observations": 30
+    },
+    {
+      "id": "yawpitch_50",
+      "nvf_run": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/nvf/50/seed42",
+      "random_run": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/random/50/seed42",
+      "checkpoint_observations": 50
+    }
+  ]
+}

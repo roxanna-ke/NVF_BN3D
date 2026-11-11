@@ -1,0 +1,44 @@
+{
+  "mesh_path": "/mnt/scratch/imos-students/ke/data/buildnet3d/building_models/building2/building2.obj",
+  "data_root": "/mnt/scratch/imos-students/ke/data/REAL/building2",
+  "output_root": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2",
+  "camera": {
+    "width": 512,
+    "height": 512,
+    "fx": 256.0,
+    "fy": 256.0,
+    "cx": 256.0,
+    "cy": 256.0
+  },
+  "seeds": [
+    42
+  ],
+  "candidates": 512,
+  "train_iter": 5000,
+  "nvf_iterations": 500,
+  "nvf_batch_size": 65536,
+  "cycles_samples": 100,
+  "d0": 1.0,
+  "world_up": [
+    0,
+    0,
+    1
+  ],
+  "target_height_fraction": [
+    0,
+    1
+  ],
+  "min_foreground_fraction": 0.01,
+  "random_max_attempts": 128,
+  "random_max_batches": 4,
+  "audit": {
+    "enabled": true,
+    "map_observations": [
+      3,
+      10,
+      20,
+      35
+    ]
+  },
+  "frozen_inputs": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/prepared/frozen_inputs.json"
+}

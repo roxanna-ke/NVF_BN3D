@@ -1,0 +1,74 @@
+{
+  "history_root": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building1",
+  "frozen_eval_root": "/mnt/scratch/imos-students/ke/outputs/bn3d_eval_protocol_v1/building1",
+  "frozen_directory": null,
+  "output_root": "/mnt/scratch/imos-students/ke/outputs/bn3d_diagnostics_v1/building1",
+  "history_seed": 42,
+  "runs": [
+    "nvf/20",
+    "random/20",
+    "nvf/50",
+    "random/50"
+  ],
+  "states": [
+    3,
+    10,
+    20,
+    35
+  ],
+  "main_pair": [
+    "nvf/50",
+    "random/50"
+  ],
+  "score_seeds": [
+    42000,
+    42001,
+    42002,
+    42003,
+    42004,
+    42005,
+    42006,
+    42007,
+    42008,
+    42009
+  ],
+  "proposal_seeds": [
+    52000,
+    52001,
+    52002,
+    52003,
+    52004
+  ],
+  "raw_proposals_per_batch": 614,
+  "branch_states": [
+    10,
+    20
+  ],
+  "branch_seeds": [
+    42,
+    43,
+    44
+  ],
+  "branch_runs": [
+    "nvf/50"
+  ],
+  "reset_iterations": 5000,
+  "inference_seeds": [
+    42000,
+    43000,
+    44000
+  ],
+  "eval_modes": [
+    "train",
+    "eval"
+  ],
+  "distance_edges": [
+    0,
+    0.5,
+    1,
+    2,
+    4,
+    8
+  ],
+  "distance_match_tolerance": 0.05
+}

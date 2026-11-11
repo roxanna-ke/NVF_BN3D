@@ -33,8 +33,17 @@ class BaseSampler():
         return self.sample(*args, **kwargs)
     
     def filter_poses(self, poses):
+        audit = getattr(self, 'audit_enabled', False)
+        if audit:
+            original = poses.detach().cpu().numpy().copy()
+            quaternion_valid = ((poses[:, :4].norm(dim=1) > 1e-9) &
+                                ~torch.isnan(poses).any(dim=1))
         poses = self.filter_valid_quat(poses)
         if self.pipeline is None or self.density_threshold is None:
+            if audit:
+                self.last_filter_audit = {'raw_poses': original,
+                    'quaternion_valid': quaternion_valid.detach().cpu().numpy(),
+                    'density': None, 'density_valid': np.ones(len(poses), dtype=bool)}
             return poses
         else:
             positions = poses[:, -3:]
@@ -42,6 +51,11 @@ class BaseSampler():
             density = get_density(positions.to(device=nerf_model.device), nerf_model).squeeze().to(poses)
             # breakpoint()
             valid_idx = density<self.density_threshold
+            if audit:
+                self.last_filter_audit = {'raw_poses': original,
+                    'quaternion_valid': quaternion_valid.detach().cpu().numpy(),
+                    'density': density.detach().cpu().numpy().copy(),
+                    'density_valid': valid_idx.detach().cpu().numpy().copy()}
             # print('valid sample:', valid_idx.sum())
             poses = poses[valid_idx, :]
             return poses

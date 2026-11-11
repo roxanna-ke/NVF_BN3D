@@ -188,9 +188,16 @@ def run(config, policy, seed, total):
         "canonical_to_world": scene.canonical_to_world.tolist(),
     }, indent=2) + "\n")
 
-    # Re-render both initial observations and held-out GT with the same scene.
-    test_images = scene.render_poses([poses[i] for i in test_ids])
-    init_images = scene.render_poses([poses[i] for i in init_ids])
+    if config.get('frozen_inputs'):
+        from experiments.yawpitch_audit import load_frozen_inputs
+        test_images, init_images = load_frozen_inputs(config, {
+            'world_to_canonical': matrix.tolist(),
+            'canonical_to_world': scene.canonical_to_world.tolist(),
+        }, init_ids, test_ids, poses)
+    else:
+        # Historical default: re-render observations and held-out GT.
+        test_images = scene.render_poses([poses[i] for i in test_ids])
+        init_images = scene.render_poses([poses[i] for i in init_ids])
     if any(image[..., 3].max() == 0 for image in init_images):
         raise ValueError("Blender produced an empty foreground mask")
     obs_dir = run_dir / "observations"
@@ -223,6 +230,7 @@ def run(config, policy, seed, total):
     from nvf.active_mapping.agents.bn3d_yawpitch_sampler import BN3DYawPitchSampler
     agent.sampler = BN3DYawPitchSampler(cfg)
     agent.sampler.pipeline = agent.pipeline
+    agent.sampler.audit_enabled = config.get('audit', {}).get('enabled', False)
     agent.pipeline.trainer.config.nvf_num_iterations = config.get("nvf_iterations", 500)
     agent.pipeline.trainer.config.nvf_batch_size = config.get("nvf_batch_size", 65536)
 
@@ -305,10 +313,23 @@ def select_observation(agent, scene, cfg, config, policy, observation):
         candidates = agent.sampler(cfg.n_sample, pose=agent.current_pose)
         if len(candidates) == 0:
             raise RuntimeError("No valid camera candidates")
-        scores = agent.get_reward(candidates) if policy == "nvf" else None
+        audit = None
+        if config.get('audit', {}).get('enabled', False):
+            from experiments.yawpitch_audit import SelectionAudit
+            audit = SelectionAudit(agent, cfg.exp_folder, config, observation, batch)
+            sampling_record = audit.sampling(candidates)
+        previous_observer = getattr(agent, 'reward_observer', None)
+        try:
+            if audit is not None:
+                agent.reward_observer = audit.reward
+            scores = agent.get_reward(candidates) if policy == "nvf" else None
+        finally:
+            agent.reward_observer = previous_observer
         order = [int(scores.reshape(-1).argmax().item())] if policy == "nvf" else torch.randperm(len(candidates)).tolist()
         record = {"poses": candidates.detach().cpu().tolist(),
                   "scores": None if scores is None else scores.detach().cpu().reshape(-1).tolist(), "attempts": []}
+        if audit is not None:
+            record['sampling_audit'] = sampling_record
         batches.append(record)
         for chosen in order:
             pose = candidates[chosen].detach().cpu()
@@ -319,6 +340,8 @@ def select_observation(agent, scene, cfg, config, policy, observation):
             accepted = policy == "nvf" or fraction >= config["min_foreground_fraction"]
             record["attempts"].append({"index": chosen, "foreground_fraction": fraction, "accepted": accepted})
             if accepted:
+                if audit is not None:
+                    audit.selected(chosen, fraction)
                 return pose, image, {"batches": batches, "chosen_batch": batch, "chosen": chosen,
                                      "matrix_pose": matrix.tolist(), "render_attempts": attempts}
             if attempts >= config["random_max_attempts"]:
