@@ -7,9 +7,39 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
+
+
+@contextmanager
+def preserve_mesh_materials(objects):
+    """bpycv's annotation pass clears slots, resetting polygon material indices.
+
+    Restoring the slot list alone leaves every face using slot zero. Preserve
+    both parts, including on a failed render and for objects sharing mesh data.
+    This helper intentionally does not import bpy, so the failure is CPU-testable.
+    """
+    saved, seen = [], set()
+    for obj in objects:
+        mesh = obj.data
+        if id(mesh) in seen:
+            continue
+        seen.add(id(mesh))
+        indices = np.empty(len(mesh.polygons), dtype=np.int32)
+        mesh.polygons.foreach_get('material_index', indices)
+        saved.append((mesh, list(mesh.materials), indices))
+    try:
+        yield
+    finally:
+        for mesh, materials, indices in saved:
+            if list(mesh.materials) != materials:
+                mesh.materials.clear()
+                for material in materials:
+                    mesh.materials.append(material)
+            mesh.polygons.foreach_set('material_index', indices)
+            mesh.update()
 
 
 def read_metadata(data_root: Path) -> dict:

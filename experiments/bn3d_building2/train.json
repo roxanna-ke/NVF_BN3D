@@ -40,5 +40,11 @@
       35
     ]
   },
-  "frozen_inputs": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/prepared/frozen_inputs.json"
+  "frozen_inputs": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/prepared/frozen_inputs.json",
+  "test_set": "new20",
+  "initial_frame_ids": [
+    131,
+    18,
+    154
+  ]
 }

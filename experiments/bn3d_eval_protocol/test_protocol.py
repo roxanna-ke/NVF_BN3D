@@ -144,6 +144,30 @@ assert not hasattr(sys.modules['sampling'], 'generate_views')
             self.assertTrue((root / 'policy_differences.csv').exists())
             self.assertFalse(list((root / 'comparisons').rglob('*gt*')))
 
+    def test_new_only_summary_never_requires_metadata_test_results(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cfg = {'output_root': temp, 'comparisons': [{'id': 'building2'}],
+                   'modes': ['train', 'eval'], 'inference_seeds': [42], 'test_sets': ['new']}
+            for mode in cfg['modes']:
+                for policy in ['nvf', 'random']:
+                    dest = root / 'evaluations/building2/new' / mode / policy / 'seed42'
+                    (dest / 'predictions').mkdir(parents=True)
+                    for i in range(20):
+                        Image.new('RGB', (2, 2), 'red').save(dest / 'predictions' / f'view_{i:02d}.png')
+                    write(dest / 'metrics.json', {name: 1. for name in [
+                        'full_psnr', 'fg_psnr', 'full_ssim', 'fg_ssim', 'full_lpips', 'fg_lpips_spatial']})
+                    write(dest / 'complete.json', {'files': {'metrics.json': sha256(dest / 'metrics.json')}})
+            summarize(cfg)
+            effects = json.loads((root / 'comparisons/building2/protocol_effects.json').read_text())
+            self.assertEqual(set(effects['fg_psnr']), {'eval_minus_train_gap_at_new'})
+            self.assertFalse(list(root.rglob('old')))
+            import csv
+            with (root / 'summary.csv').open() as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertEqual(len(rows), 4)
+            self.assertEqual({row['test_set'] for row in rows}, {'new'})
+
 
 if __name__ == '__main__':
     unittest.main()

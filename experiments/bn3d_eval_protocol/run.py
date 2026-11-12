@@ -63,6 +63,8 @@ def runtime_info():
 
 def load_config(path):
     cfg = read(path)
+    if cfg.get('test_sets', ['old', 'new']) not in [['old', 'new'], ['new']]:
+        raise ValueError('test_sets must be [old, new] or [new]')
     if not cfg['comparisons'] or len(set(g['id'] for g in cfg['comparisons'])) != len(cfg['comparisons']):
         raise ValueError('Comparison IDs must be unique')
     for group in cfg['comparisons']:
@@ -111,7 +113,7 @@ def pair_inputs(group, cfg):
             raise ValueError(f'Policy manifests differ: {key}')
     if a['normalization'] != b['normalization'] or a['split'] != b['split']:
         raise ValueError('Policy normalization/splits differ')
-    if len(a['split']['test']) != 40:
+    if 'old' in cfg.get('test_sets', ['old', 'new']) and len(a['split']['test']) != 40:
         raise ValueError('Expected 40 old test views')
     for item in pair:
         trajectory = read(Path(item['run']) / 'trajectory.json')
@@ -132,14 +134,17 @@ def freeze_spec(item, cfg):
     meta = read(meta_path)
     k = item['manifest']['intrinsics']
     matrix = np.asarray(item['normalization']['world_to_canonical'])
-    old_poses = [transform_pose(np.asarray(meta['frames'][i]['camtoworld']), matrix).tolist()
-                 for i in item['split']['test']]
-    return {'version': 1, 'width': 512, 'height': 512, 'intrinsics': k,
-            'normalization': item['normalization'], 'old_frame_ids': item['split']['test'],
-            'old_poses': old_poses, 'assets': item['manifest']['asset_sha256'],
+    spec = {'version': 2, 'width': 512, 'height': 512, 'intrinsics': k,
+            'test_sets': cfg.get('test_sets', ['old', 'new']),
+            'normalization': item['normalization'], 'assets': item['manifest']['asset_sha256'],
             'metadata_sha256': item['manifest']['metadata_sha256'],
             'cycles_samples': item['config']['cycles_samples'], 'seed': cfg['seed'],
             'sampling': cfg['sampling'], 'code': code_digest()}
+    if 'old' in spec['test_sets']:
+        spec['old_frame_ids'] = item['split']['test']
+        spec['old_poses'] = [transform_pose(np.asarray(meta['frames'][i]['camtoworld']), matrix).tolist()
+                             for i in item['split']['test']]
+    return spec
 
 
 def dataset_directory(item, cfg):
@@ -188,7 +193,7 @@ def freeze_item(item, cfg):
     with tempfile.TemporaryDirectory(prefix='.freeze-', dir=dest.parent) as temp:
         stage = Path(temp) / 'dataset'
         stage.mkdir()
-        records = {'old': [], 'new': []}
+        records = {which: [] for which in spec['test_sets']}
 
         def save(which, record, image):
             if image.shape != (512, 512, 4) or image.dtype != np.uint8:
@@ -205,7 +210,7 @@ def freeze_item(item, cfg):
         # Reuse archived old GT when available, otherwise regenerate once and
         # freeze. RGB was not saved during original runs in every experiment.
         old_cache = Path(item['config']['output_root']) / 'foreground_eval/reference'
-        for frame_id, pose in zip(spec['old_frame_ids'], spec['old_poses']):
+        for frame_id, pose in zip(spec.get('old_frame_ids', []), spec.get('old_poses', [])):
             cache = old_cache / f'frame_{frame_id:03d}.png'
             if cache.exists():
                 image = np.asarray(Image.open(cache).convert('RGBA'))
@@ -217,7 +222,7 @@ def freeze_item(item, cfg):
             save('old', {'id': f'frame_{frame_id:03d}', 'pose': pose,
                          'original_frame_id': frame_id, 'origin': origin}, image)
         old_fractions = Path(item['run']) / 'reference_foreground.json'
-        if old_fractions.exists() and not np.array_equal(
+        if 'old' in records and old_fractions.exists() and not np.array_equal(
                 [v['foreground_fraction'] for v in records['old']], read(old_fractions)):
             raise ValueError('Old GT silhouettes differ from original records')
 
@@ -238,7 +243,7 @@ def freeze_item(item, cfg):
                     'files': {str(f.relative_to(stage)): sha256(f) for f in sorted(stage.rglob('*.png'))}}
         write(stage / 'manifest.json', manifest)
         stage.rename(dest)
-    print(f'Frozen old40/new20 GT: {dest}', flush=True)
+    print(f'Frozen GT {[(k, len(v)) for k, v in records.items()]}: {dest}', flush=True)
 
 
 def load_model(item):
@@ -412,7 +417,7 @@ def summarize(cfg):
     names = ['full_psnr', 'fg_psnr', 'full_ssim', 'fg_ssim', 'full_lpips', 'fg_lpips_spatial']
     for group in cfg['comparisons']:
         values = {}
-        for which in ['old', 'new']:
+        for which in cfg.get('test_sets', ['old', 'new']):
             for mode in cfg['modes']:
                 for policy in ['nvf', 'random']:
                     directory = out / 'evaluations' / group['id'] / which / mode / policy
@@ -460,9 +465,11 @@ def summarize(cfg):
         effects = {}
         for name in names:
             gap = lambda which, mode: values[which, mode, 'nvf'][name] - values[which, mode, 'random'][name]
-            effects[name] = {'new_minus_old_gap_at_train': gap('new', 'train') - gap('old', 'train'),
-                'eval_minus_train_gap_at_old': gap('old', 'eval') - gap('old', 'train'),
-                'eval_minus_train_gap_at_new': gap('new', 'eval') - gap('new', 'train')}
+            effects[name] = {'eval_minus_train_gap_at_new': gap('new', 'eval') - gap('new', 'train')}
+            if 'old' in cfg.get('test_sets', ['old', 'new']):
+                effects[name].update(
+                    new_minus_old_gap_at_train=gap('new', 'train') - gap('old', 'train'),
+                    eval_minus_train_gap_at_old=gap('old', 'eval') - gap('old', 'train'))
         write(out / 'comparisons' / group['id'] / 'protocol_effects.json', effects)
     for filename, entries in [('summary.csv', rows), ('policy_differences.csv', contrasts)]:
         with (out / filename).open('w', newline='') as stream:
@@ -486,8 +493,10 @@ def main():
         if not cfg['comparisons']:
             parser.error('Unknown comparison')
     if args.command == 'plan':
-        print(json.dumps({'output_root': cfg['output_root'], 'conditions': ['old/train', 'new/train', 'old/eval', 'new/eval'],
-            'views': {'old': 40, 'new': 20}, 'resolution': [512, 512],
+        sets = cfg.get('test_sets', ['old', 'new'])
+        print(json.dumps({'output_root': cfg['output_root'],
+            'conditions': [f'{which}/{mode}' for mode in cfg['modes'] for which in sets],
+            'views': {which: 40 if which == 'old' else 20 for which in sets}, 'resolution': [512, 512],
             'comparisons': [g['id'] for g in cfg['comparisons']], 'inference_seeds': cfg['inference_seeds'],
             'new_sampling': cfg['sampling']}, indent=2))
         if args.check_paths:

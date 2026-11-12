@@ -14,11 +14,13 @@
     "ring_counts": [
       4,
       6,
-      9
+      5,
+      4
     ],
     "ring_height_fractions": [
       0.95,
-      0.45,
+      0.65,
+      0.35,
       0.05
     ],
     "azimuth_offset_degrees": 15.0,
@@ -58,5 +60,8 @@
       "random_run": "/mnt/scratch/imos-students/ke/outputs/bn3d_yawpitch/building2/random/50/seed42",
       "checkpoint_observations": 50
     }
+  ],
+  "test_sets": [
+    "new"
   ]
 }

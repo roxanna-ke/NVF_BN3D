@@ -132,16 +132,31 @@ def load_frozen_inputs(config, normalization, initial_ids, test_ids, poses):
 
     def images(which, ids):
         rows = inputs[which]
-        if [r['frame_id'] for r in rows] != ids:
+        key = 'id' if which == 'test' else 'frame_id'
+        if [r[key] for r in rows] != ids:
             raise ValueError(f'Frozen {which} frame IDs differ')
         result = []
         for row in rows:
             if sha256(Path(row['file'])) != row['sha256']:
                 raise ValueError(f'Frozen image modified: {row["file"]}')
-            np.testing.assert_allclose(row['pose'], poses[row['frame_id']], atol=1e-7)
+            if which != 'test':
+                np.testing.assert_allclose(row['pose'], poses[row['frame_id']], atol=1e-7)
             image = np.asarray(Image.open(row['file']).convert('RGBA'))
             if image.shape != (512, 512, 4):
                 raise ValueError('Frozen image must be 512x512 RGBA')
             result.append(image)
         return result
-    return images('old', test_ids), images('initial', initial_ids)
+    if config.get('test_set') == 'new20':
+        views = manifest['views']
+        if set(views) != {'new'} or len(views['new']) != 20 or test_ids:
+            raise ValueError('new20 must be the only test set; no metadata test split')
+        rows = inputs['test']
+        if len(rows) != 20:
+            raise ValueError('Expected 20 frozen test records')
+        for row, view in zip(rows, views['new']):
+            if row['pose'] != view['pose'] or Path(row['file']) != dataset / view['file']:
+                raise ValueError('Frozen new20 pose/path differs from manifest')
+        test_images = images('test', [v['id'] for v in views['new']])
+    else:
+        test_images = images('old', test_ids)
+    return test_images, images('initial', initial_ids)

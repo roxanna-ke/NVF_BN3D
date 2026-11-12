@@ -70,6 +70,16 @@ def prepare(config):
                   [0., camera["fy"], camera["cy"]], [0., 0., 1.]], dtype=float)
     output = Path(config["output_root"]) / "prepared"
     output.mkdir(parents=True, exist_ok=True)
+    if config.get('test_set') == 'new20':
+        initial = config['initial_frame_ids']
+        if (len(initial) != 3 or len(set(initial)) != 3
+                or any(type(i) is not int or not 0 <= i < len(meta['frames']) for i in initial)):
+            raise ValueError('Require three distinct initial metadata frame IDs')
+        # No held-out metadata cameras: all metadata positions define the pool.
+        splits = {str(seed): {'initial': initial, 'test': []} for seed in config['seeds']}
+    else:
+        splits = {str(seed): dict(zip(('initial', 'test'), split_frames(meta, seed)))
+                  for seed in config['seeds']}
     manifest = {
         "mesh_sha256": sha256(mesh),
         "asset_sha256": {path.name: sha256(path) for path in sorted(mesh.parent.iterdir())
@@ -80,8 +90,7 @@ def prepare(config):
         "horizontal_fov_degrees": float(np.degrees(2 * np.arctan(camera["width"] / (2 * camera["fx"])))),
         "vertical_fov_degrees": float(np.degrees(2 * np.arctan(camera["height"] / (2 * camera["fy"])))),
         "width": meta["width"], "height": meta["height"],
-        "splits": {str(seed): dict(zip(("initial", "test"), split_frames(meta, seed)))
-                   for seed in config["seeds"]},
+        "splits": splits,
     }
     # NVF and Random jobs can prepare the same inputs concurrently.
     temporary = output / f".manifest.{os.getpid()}.{uuid4().hex}.json"
@@ -157,6 +166,7 @@ def run(config, policy, seed, total):
     meta = read_metadata(Path(config["data_root"]), config["camera"])
     init_ids = manifest["splits"][str(seed)]["initial"]
     test_ids = manifest["splits"][str(seed)]["test"]
+    test_poses = None
     run_dir = Path(config["output_root"]) / policy / str(total) / f"seed{seed}"
     if (run_dir / "complete.json").exists():
         raise FileExistsError(f"Already complete: {run_dir}")
@@ -194,10 +204,17 @@ def run(config, policy, seed, total):
             'world_to_canonical': matrix.tolist(),
             'canonical_to_world': scene.canonical_to_world.tolist(),
         }, init_ids, test_ids, poses)
+        if config.get('test_set') == 'new20':
+            frozen = json.loads(Path(config['frozen_inputs']).read_text())
+            test_poses = [np.asarray(row['pose']) for row in frozen['test']]
     else:
+        if config.get('test_set') == 'new20':
+            raise ValueError('new20 requires frozen_inputs; freeze before training')
         # Historical default: re-render observations and held-out GT.
         test_images = scene.render_poses([poses[i] for i in test_ids])
         init_images = scene.render_poses([poses[i] for i in init_ids])
+    if test_poses is None:
+        test_poses = [poses[i] for i in test_ids]
     if any(image[..., 3].max() == 0 for image in init_images):
         raise ValueError("Blender produced an empty foreground mask")
     obs_dir = run_dir / "observations"
@@ -241,7 +258,7 @@ def run(config, policy, seed, total):
         def get_images(self, mode, return_quat=False):
             if mode != "eval" or return_quat:
                 raise ValueError(mode)
-            return test_images, [torch.tensor(poses[i], dtype=torch.float32) for i in test_ids]
+            return test_images, [torch.tensor(pose, dtype=torch.float32) for pose in test_poses]
 
     tracker = RefMetricTracker(cfg, EvaluationEnvironment())
     tracker.init_trajectory(obs_poses)

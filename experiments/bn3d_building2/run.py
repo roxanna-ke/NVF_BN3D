@@ -27,6 +27,11 @@ def configs(path):
         raise ValueError('Building2 requires K256/FOV90')
     if evaluation['inference_seeds'] != [42000, 43000, 44000]:
         raise ValueError('Unexpected inference seeds')
+    if train.get('test_set') != 'new20' or evaluation.get('test_sets') != ['new']:
+        raise ValueError('Building2 uses only the pretraining frozen new20 test set')
+    sampling = evaluation['sampling']
+    if sampling['ring_counts'] != [4, 6, 5, 4] or sampling['ring_height_fractions'] != [.95, .65, .35, .05]:
+        raise ValueError('Building2 requires four rings at heights .95/.65/.35/.05')
     if [g['checkpoint_observations'] for g in evaluation['comparisons']] != [3, 10, 20, 30, 50]:
         raise ValueError('Unexpected checkpoint counts')
     root = Path(train['output_root'])
@@ -61,12 +66,19 @@ def verify(train, evaluation):
     if manifest['spec'] != spec:
         raise ValueError('Frozen spec differs from evaluation spec')
     protocol.verify_files(directory, manifest)
-    for which, count in [('initial', 3), ('old', 40)]:
+    if set(manifest['views']) != {'new'} or len(manifest['views']['new']) != 20:
+        raise ValueError('Expected only new20 frozen views')
+    for which, count in [('initial', 3), ('test', 20)]:
         rows = frozen[which]
-        ids = item['split']['initial' if which == 'initial' else 'test']
-        if len(rows) != count or [r['frame_id'] for r in rows] != ids:
+        key = 'frame_id' if which == 'initial' else 'id'
+        ids = item['split']['initial'] if which == 'initial' else [v['id'] for v in manifest['views']['new']]
+        if len(rows) != count or [r[key] for r in rows] != ids:
             raise ValueError(f'Invalid frozen {which} provenance')
-        for row in rows:
+        for index, row in enumerate(rows):
+            if which == 'test':
+                view = manifest['views']['new'][index]
+                if row['pose'] != view['pose'] or Path(row['file']) != directory / view['file']:
+                    raise ValueError('Frozen test pose/path differs from dataset')
             if not Path(row['file']).is_absolute() or sha256(row['file']) != row['sha256']:
                 raise ValueError(f'Frozen PNG changed: {row["file"]}')
     return frozen, item
@@ -107,20 +119,19 @@ def freeze(train, evaluation):
     synthetic = Path(item['run'])
     synthetic.mkdir()
     write(synthetic / 'trajectory.json', initial)
-    # Keep item.config.output_root identical to training: it controls the old GT cache.
     protocol.freeze_item(item, evaluation)
     directory, _ = protocol.dataset_directory(item, evaluation)
     dataset = read(directory / 'manifest.json')
     protocol.verify_files(directory, dataset)
     frozen.update(dataset=str(directory), manifest_sha256=sha256(directory / 'manifest.json'),
-                  old=[dict(pose=v['pose'], file=str(directory / v['file']),
-                            sha256=sha256(directory / v['file']), frame_id=v['original_frame_id'])
-                       for v in dataset['views']['old']])
+                  test=[dict(id=v['id'], pose=v['pose'], file=str(directory / v['file']),
+                             sha256=sha256(directory / v['file']))
+                        for v in dataset['views']['new']])
     write(train['frozen_inputs'], frozen)
     files = {str(p.relative_to(root)): sha256(p) for p in sorted(root.rglob('*')) if p.is_file()}
     write(root / 'freeze_complete.json', dict(train_config=train, eval_config=evaluation, files=files))
     verify(train, evaluation)
-    print(f'Frozen initial3/old40/new20: {train["frozen_inputs"]}', flush=True)
+    print(f'Frozen initial3/new20: {train["frozen_inputs"]}', flush=True)
 
 
 def execute(task, bundle, train, evaluation):

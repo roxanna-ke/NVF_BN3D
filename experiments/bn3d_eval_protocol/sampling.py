@@ -1,6 +1,6 @@
 """Dependency-light, Z-up, ground-aware adaptation of native hotdog_eval.
 
-Native ring counts/order (4 high, 6 middle, 9 low) + one overhead = 20.
+Configurable height rings (19 views total) + one overhead = 20.
 Each view's radius is fitted to the actual mesh and intrinsics, independently
 of any checkpoint. Ring heights are measured from the ground, not the center.
 """
@@ -70,8 +70,11 @@ def generate_views(vertices, k, settings, render=None):
         raise ValueError('ground_z must not cut through the building mesh')
     counts = settings['ring_counts']
     fractions = settings['ring_height_fractions']
-    if counts != [4, 6, 9] or len(fractions) != 3 or any(not 0 <= f <= 1 for f in fractions):
-        raise ValueError('Require native 4/6/9 rings and three height fractions in [0,1]')
+    if (not counts or any(type(n) is not int or n <= 0 for n in counts)
+            or sum(counts) != 19 or len(fractions) != len(counts)
+            or any(not 0 <= f <= 1 for f in fractions)
+            or any(a <= b for a, b in zip(fractions, fractions[1:]))):
+        raise ValueError('Require 19 ring views and descending height fractions in [0,1]')
     if high[2] <= ground:
         raise ValueError('Building height must be positive')
     minimum = settings['min_foreground_fraction']

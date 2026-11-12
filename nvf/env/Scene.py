@@ -2,11 +2,11 @@ from nvf.env.BlenderRenderer import *
 from nvf.env.BlenderProcess import BlenderProcess
 import nvf.env.gen_data_fn as gen_data_fn
 import contextlib
-from nvf.bn3d_data import import_obj, normalization
+from nvf.bn3d_data import import_obj, normalization, preserve_mesh_materials
 
 
 class BN3DScene(Blender):
-    """BN3D building1 rendered through the existing NVF Blender interface."""
+    """BN3D buildings rendered through the existing NVF Blender interface."""
 
     name = 'bn3d'
 
@@ -34,6 +34,12 @@ class BN3DScene(Blender):
         world.node_tree.nodes.get('Background').inputs['Color'].default_value = (0.5, 0.5, 0.5, 1)
         world.node_tree.nodes.get('Background').inputs['Strength'].default_value = 1
         self.scene.world = world
+
+    def render(self):
+        # render_data renders RGB first, then replaces materials for instance
+        # annotation. Keep the next RGB render's per-face assignments intact.
+        with preserve_mesh_materials(self.bn3d_objects):
+            return super().render()
 
     def get_mesh(self):
         # The normalized OBJ already fits inside [-1, 1]. The generic Blender
